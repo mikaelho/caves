@@ -15,6 +15,14 @@ import cornermenu
 class ControlCenter():
   
   menu_color = '#888888'
+  colors = ['green', 'red', 'blue', 'orange']
+  icon_names = [
+    'emj:Snake',
+    'emj:Octopus',
+    'emj:Whale',
+    'emj:Honeybee'
+  ]
+  active_players = [True]*4
   
   def __init__(self, bg_view):
     self.bg = bg_view
@@ -22,6 +30,8 @@ class ControlCenter():
     self.main_menu = self.create_main_menu()
     self.edit_view = self.create_edit_view()
     self.edit_menu = self.create_edit_menu()
+    self.play_menu = self.create_play_menu()
+    self.play_layers = self.create_play_layers()
     
     self.hide_all()
     self.show_main_menu()
@@ -30,25 +40,18 @@ class ControlCenter():
     self.hide_main_menu()
     self.hide_edit_view()
     self.hide_edit_menu()
+    self.hide_play_menu()
+    self.hide_play_layers()
     
   def create_main_menu(self):
     
-    spec = {
-      'main': [
-        { 'Play':
-          [ ('Solo', self.play_solo),
-            ('Multiplayer', self.play_multi)
-          ]
-        },
-        { 'Maps':
-          [ ('New', self.map_new),
-            ('Edit', self.map_edit)
-          ]
-        }
-      ]
-    }
+    spec = [
+      ('PLAY', self.play),
+      ('NEW', self.map_new),
+      ('EDIT', self.map_edit)
+    ]
     
-    main_menu = MenuView(spec, frame=self.bg.bounds)
+    main_menu = MenuView(self, spec, frame=self.bg.bounds)
     self.bg.add_subview(main_menu)
     return main_menu
     
@@ -59,12 +62,40 @@ class ControlCenter():
     self.main_menu.hidden = False
     self.main_menu.bring_to_front()
     
-  def play_solo(self, sender):
-    pass
-
-  def play_multi(self, sender):
-    pass
+  def set_map_for_play(self, img_filename):
+    self.filename = img_filename
+    (name, _) = os.path.splitext(os.path.basename(img_filename))
+    self.main_menu.map_btn.title = name
     
+  def play(self, sender):
+    self.hide_all()
+    #self.show_play_menu()
+    self.show_edit_view()
+    self.load_actual()
+    playfield = pilImage.open(io.BytesIO(self.edit_view.img.to_png()))
+    playfield = playfield.resize((int(self.bg.width), int(self.bg.height))).load()
+    for layer in self.play_layers:
+      layer.set_map(self.edit_view.waypoints, playfield)
+    self.show_play_layers()
+    self.turn = -1
+    self.next_turn()
+
+  def next_turn(self, sender=None):
+    self.turn += 1
+    try:
+      self.turn += self.active_players[self.turn:].index(True)
+    except ValueError:
+      self.turn = self.active_players.index(True)
+    console.hud_alert(self.colors[self.turn].capitalize(), duration=0.5)
+    self.play_layers[self.turn].start_turn()
+
+#  def play_multi(self, sender):
+#    pass
+#    
+#  def load_and_play(self, img_filename):
+#    self.load_actual(img_filename)
+#    self.show_play_view()
+
   def map_new(self, sender):
     self.hide_all()
     self.edit_view.fill()
@@ -73,16 +104,17 @@ class ControlCenter():
 
   def map_edit(self, sender):
     self.map_new(sender)
-    self.load_map()
+    self.load_actual()
 
-  def load_map(self):
+  def load_map(self, next_func=None):
     # Get image filename
+    next_func = next_func if next_func else self.load_actual
     playfield_path = os.path.abspath('playfields')
     files = os.listdir(playfield_path)
     spec = []
     for filename in files:
       if filename.endswith('.png'):
-        spec.append((filename[:-4], functools.partial(self.load_actual, playfield_path+'/'+filename)))
+        spec.append((filename[:-4], functools.partial(next_func, playfield_path+'/'+filename)))
 
     if len(spec) == 0:
       console.hud_alert('Nothing to load')
@@ -93,9 +125,9 @@ class ControlCenter():
       menu_view = MapPicker(spec)
     return True
 
-  def load_actual(self, img_filename):
+  def load_actual(self):
     # Load image
-    self.filename = img_filename
+    img_filename = self.filename
     iv = ui.ImageView(frame=self.bg.bounds)
     #iv.hidden = True
     #self.add_subview(iv)
@@ -143,7 +175,7 @@ class ControlCenter():
     bottom_menu = EvenView(margin = 20)
     bottom_menu.flex = 'WT'
     bottom_menu.frame = (0, h - bottom_menu_height, w, bottom_menu_height)
-    bottom_menu.background_color = 'white'
+    #bottom_menu.background_color = 'white'
     self.bg.add_subview(bottom_menu)
     for icon, func in buttons:
       button = ui.Button(image = ui.Image.named(icon))
@@ -199,29 +231,92 @@ class ControlCenter():
     #pil = pilImage.open(byte_file)
     #pil = pil.resize(resize_5s)
     #pil.save(self.filename)
+    
+  def create_play_menu(self):
+    play_menu = ui.View(frame=self.bg.bounds)
+    self.bg.add_subview(play_menu)
+    buttons = [
+      [ 'iow:ios7_refresh_empty_32', None ],
+      [ 'iow:arrow_right_b_32', self.next_turn ]
+    ]
+    return self.setup_bottom_menu(buttons)
+#    (_,_,w,h) = play_menu.frame
+#    def pick_map(sender):
+#      self.load_map(next_func=self.set_map_for_play)
+#    self.map_btn = ui.Button(title='Pick map', tint_color='black', background_color=self.menu_color, corner_radius=5, action=pick_map, frame=(0.1*w, 0.1*h, 0.8*w, 50))
+#    play_menu.add_subview(self.map_btn)
+#    return play_menu
 
-class PlayingView(ui.View):
+  def hide_play_menu(self):
+    self.play_menu.hidden = True
+    
+  def show_play_menu(self):
+    self.play_menu.hidden = False
+    self.play_menu.bring_to_front()
+    
+  def create_play_layers(self):
+    layers = []
+    for color in self.colors:
+      layer = PlayingLayer(self, color=color, frame=self.bg.bounds)
+      self.bg.add_subview(layer)
+      layers.append(layer)
+    return layers
+    
+  def hide_play_layers(self):
+    for layer in self.play_layers:
+      layer.hidden = True
+    
+  def show_play_layers(self):
+    for layer in self.play_layers:
+      layer.hidden = False
+      layer.bring_to_front()
 
-  def __init__(self, starting_point, cave, multiplier):
-    super().__init__()
 
-    self.cave = cave
-    self.multiplier = multiplier
+#class PlayingView(ui.View):
+#  
+#  def __init__(self, players, waypoints, playfield):
+#    self.players = players
+#    for player in players:
+#      player['current_location'] = waypoints[0].center
+#      layer = PlayingLayer()
+#      player['view'] 
+
+
+class PlayingLayer(ui.View):
+
+  def __init__(self, control, *args, color=(0, 0, 1), **kwargs):
+    super().__init__(*args, **kwargs)
+
+    self.control = control
+    self.color = ui.parse_color(color)
+    self.init_values()
+    #self.start_turn(starting_point)
+    
+  def init_values(self):
     self.tracking = False
     self.previous_move = []
     self.current_move = []
-    self.color = (0,0,1)
-    #self.touch_stale = False
+    self.touch_stale = False
+    self.waypoints_visited = 0
+    
+  def set_map(self, waypoints, playfield, multiplier=1.0):
+    self.waypoints = waypoints
+    self.playfield = playfield
+    self.multiplier = multiplier  
+    self.starting_point = self.waypoints[0].center
+    self.init_values()
 
-    self.start_turn(starting_point)
-
-  def start_turn(self, starting_point):
-    self.starting_point = Vector(starting_point)
+  def start_turn(self):
+    starting_point = Vector(self.starting_point)
     (x,y) = starting_point
     start_marker = ui.View(frame=(x,y,30,30), corner_radius=15, alpha=0.5, touch_enabled=False)
     start_marker.background_color = '#ffc688'
     self.add_subview(start_marker)
-    start_marker.center = starting_point
+    start_marker.center = tuple(starting_point)
+    self.bring_to_front()
+    for layer in self.control.play_layers:
+      layer.alpha = 0.4
+    self.alpha = 1.0
     self.set_needs_display()
 
   def touch_began(self, touch):
@@ -231,7 +326,7 @@ class PlayingView(ui.View):
   def touch_moved(self, touch):
     img_loc = (touch.location[0] * self.multiplier, touch.location[1] * self.multiplier)
     img_loc = tuple(touch.location)
-    wall = self.cave[img_loc][3] == 255
+    wall = self.playfield[img_loc][3] == 255
 
     if not self.tracking:
       if not self.touch_stale and not wall:
@@ -247,6 +342,11 @@ class PlayingView(ui.View):
           self.previous_move.append(tuple(touch.location))
 
     else:
+      (px, py) = touch.prev_location
+      (x, y) = touch.location
+      (dx, dy) = (x-px, y-py)
+      by_x = abs(dx) > abs(dy)
+      factor = dx/dy if by_x else dy/dx
       self.current_move.append(tuple(touch.location))
       if wall:
         self.touch_ended(touch)
@@ -256,7 +356,8 @@ class PlayingView(ui.View):
     if self.tracking:
       self.tracking = False
       self.background_color = 'transparent'
-      self.start_turn(touch.location)
+      self.starting_point = touch.location
+      self.control.show_play_menu()
 
   def draw(self):
     if self.tracking:
@@ -433,6 +534,10 @@ def snapshot(view):
     return ctx.get_image()
 
 
+class BlurredButton(Blurred):
+  def spec(self):
+    return [ui.Button] + super().spec()
+
 class MenuView(ui.View):
 
   button_height = 30
@@ -443,54 +548,154 @@ class MenuView(ui.View):
 
   start_menu = 'main'
 
-  def __init__(self, spec, *args, **kwargs):
+  def __init__(self, control, spec, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
+    self.control = control
     img_view = ui.ImageView(frame=self.bounds)
 
     img_view.image = ui.Image.named("playfields/caves of soukka.png")
     self.add_subview(img_view)
 
     self.menu = ui.View(frame=(
-      (self.width - self.button_width)/4,
-      self.height/12*7,
-      self.button_width,
-      self.height/2
-    ))
+      30, self.height/2.1, self.width - 60, self.height/2 - 30
+    ), corner_radius=10)
+    #self.menu.background_color=(0,0,0,0.7)
     self.add_subview(self.menu)
-    self.set_menu('main', spec)
+    
+    (_,_,w,h) = self.menu.frame
+    def pick_map(sender):
+      self.control.load_map(next_func=self.control.set_map_for_play)
+    self.map_btn = ui.Button(title='Pick map', tint_color='white', background_color=self.menu_color, corner_radius=5, action=pick_map)
+    self.menu.add_subview(self.map_btn)
+    self.map_btn.frame = (0.05*w, 0.05*h, 0.55*w, 50)
+    
+    (title, action) = spec[2]
+    self.menu_button(title, action, 50, (0.7*w, 0.05*h+25))
+    (title, action) = spec[1]
+    self.menu_button(title, action, 50, (0.9*w, 0.05*h+25))
+    
+    self.icons = {}
+    for i in range(4):
+      icon =   ui.Image.named(self.control.icon_names[i]).with_rendering_mode(ui.RENDERING_MODE_ORIGINAL)
+      name = 'player'+str(i)
+      self.icons[name] = icon
+      btn = self.menu_color_button(
+        name, self.control.colors[i], icon,
+        (0.05*w + i*49, 0.25*h))
+      if i > 0:
+        self.toggle(btn)
+        
+    (title, action) = spec[0]
+    self.menu_button(title, action, 50, (0.7*w, 0.25*h+25))
+    
+    #btn = self.create_button
+    #self.set_menu('main', spec)
+
+  def menu_button(self, title, action, diameter, center):
+    btn = ui.Button(
+      title=title,
+      action=action,
+      tint_color='white',
+      background_color=self.menu_color
+    )
+    btn.width = btn.height = diameter
+    btn.corner_radius = diameter/2
+    btn.center = center
+    self.menu.add_subview(btn)
+    
+#  def menu_player_field(self, action, name, text, corner, width):
+#    (x,y) = corner
+#    fld = ui.TextField(
+#      action=action,
+#      name=name,
+#      text=text,
+#      tint_color='white',
+#      corner_radius=5,
+#      background_color=self.menu_color,
+#      frame=(x, y, width, 30)
+#    )
+#    self.menu.add_subview(fld)
+    
+  def menu_color_button(self, name, color, icon, corner):
+    (x,y) = corner
+    #img = self.button_image('plf:AlienBlue_stand', 45)
+    #img =  ui.Image.named(icon_name).with_rendering_mode(ui.RENDERING_MODE_ORIGINAL)
+    btn = ui.Button(
+      name=name,
+      action=self.toggle,
+      background_color=color
+    )
+    btn.frame=(x, y, 50, 50)
+    btn.corner_radius = 25
+    btn.image=icon
+    btn.background_color = tuple([btn.background_color[i] for i in range(3)]) + (0.8,)
+    self.menu.add_subview(btn)
+    return btn
+
+#  def button_image(self, name, max_dim):
+#    img = ui.Image.named(name)
+#    with io.BytesIO(img.to_png()) as fp:
+#      p_img = pilImage.open(fp)
+#      scale = max_dim/max(p_img.size)
+#      (w,h) = p_img.size
+#      target = (int(w*scale), int(h*scale))
+#      p_img = p_img.resize(target)
+#    with io.BytesIO() as fp:
+#      p_img.save(fp, 'PNG')
+#      result_img = ui.Image.from_data(fp.getvalue())
+#    return result_img.with_rendering_mode(ui.RENDERING_MODE_ORIGINAL)
+
+  def toggle(self, sender):
+    i = int(sender.name[-1])
+    p = self.control.active_players
+    p[i] = p[i] == False
+    color = sender.background_color
+    color = tuple([color[j] for j in range(3)])
+    if not p[i]:
+      color += (0.4,)
+      sender.image = None
+    else:
+      color += (0.8,)
+      sender.image = self.icons[sender.name]
+    sender.background_color = color
+    if not any(p):
+      self.toggle(sender)
 
   def set_menu(self, menu_key, spec):
     menu_spec = spec[menu_key]
-    for v in self.menu.subviews:
-      self.menu.remove_subview(v)
-    top_y = 50
-    for section in menu_spec:
-      label = list(section.keys())[0]
-      if isinstance(section[label], list):
-        l = ui.Label(text=label, text_color='black', background_color=(1,1,1,0.5), alignment=ui.ALIGN_CENTER, frame=(0, top_y, self.button_width, self.button_height))
-        #+self.button_gap)*(len(section[label])+1)))
-        self.menu.add_subview(l)
-        top_y += self.button_height + self.button_gap
-        for (title, action) in section[label]:
-          btn = self.menu_button(title, action, top_y)
-          self.menu.add_subview(btn)
-          btn.frame=(0, top_y, self.button_width, self.button_height)
-          top_y += self.button_height + self.button_gap
-      else:
-        btn = self.menu_button(label, section[label], top_y)
-        self.menu.add_subview(btn)
-        btn.frame=(0, top_y, self.button_width, self.button_height)
-        top_y += self.button_height + self.button_gap
-
-  def menu_button(self, title, action, top_y):
-    return ui.Button(
-      title=title,
-      action=action,
-      tint_color='black',
-      background_color='white',
-      corner_radius=5
-    )
+#    for v in self.menu.subviews:
+#      self.menu.remove_subview(v)
+    #top_y = 50
+    x_increment = self.menu.width/(len(menu_spec)+1)
+    dim = 0.55*x_increment
+    for (i, (title, func)) in enumerate(menu_spec):
+      btn = ui.Button()
+      btn.title = title
+      btn.action = func      
+      btn.background_color = self.menu_color
+      btn.tint_color = 'white'
+      self.menu.add_subview(btn)
+      btn.width = btn.height = dim
+      btn.center = ((i+1)*x_increment, self.menu.height/4)
+      btn.corner_radius = dim/2
+      
+#      label = list(section.keys())[0]
+#      if isinstance(section[label], list):
+#        l = ui.Label(text=label, text_color='black', background_color=(1,1,1,0.5), alignment=ui.ALIGN_CENTER, frame=(0, top_y, self.button_width, self.button_height))
+#        #+self.button_gap)*(len(section[label])+1)))
+#        self.menu.add_subview(l)
+#        top_y += self.button_height + self.button_gap
+#        for (title, action) in section[label]:
+#          btn = self.menu_button(title, action, top_y)
+#          self.menu.add_subview(btn)
+#          btn.frame=(0, top_y, self.button_width, self.button_height)
+#          top_y += self.button_height + self.button_gap
+#      else:
+#        btn = self.menu_button(label, section[label], top_y)
+#        self.menu.add_subview(btn)
+#        btn.frame=(0, top_y, self.button_width, self.button_height)
+#        top_y += self.button_height + self.button_gap
 
 
 class MapPicker(ui.View):
