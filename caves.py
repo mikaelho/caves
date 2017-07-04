@@ -33,6 +33,10 @@ class ControlCenter():
     self.play_menu = self.create_play_menu()
     self.play_layers = self.create_play_layers()
     
+    playfield_path = os.path.abspath('playfields')
+    files = os.listdir(playfield_path)
+    self.set_map_for_play(files[0])
+    
     self.hide_all()
     self.show_main_menu()
     
@@ -72,10 +76,17 @@ class ControlCenter():
     #self.show_play_menu()
     self.show_edit_view()
     self.load_actual()
-    playfield = pilImage.open(io.BytesIO(self.edit_view.img.to_png()))
-    playfield = playfield.resize((int(self.bg.width), int(self.bg.height))).load()
+    with io.BytesIO(self.edit_view.img.to_png()) as fp:
+      playfield = pilImage.open(fp).resize((int(self.bg.width), int(self.bg.height))).load()
+#    for x in range(3000):
+#      try:
+#        pix = playfield[x, 400]
+#        print(pix[3])
+#      except:
+#        print(x)
+#        break
     for layer in self.play_layers:
-      layer.set_map(self.edit_view.waypoints, playfield)
+      layer.set_map(self.edit_view.waypoints, playfield, self.multiplier)
     self.show_play_layers()
     self.turn = -1
     self.next_turn()
@@ -85,6 +96,18 @@ class ControlCenter():
     try:
       self.turn += self.active_players[self.turn:].index(True)
     except ValueError:
+      winners = []
+      for i, layer in enumerate(self.play_layers):
+        if layer.waypoints_visited == len(layer.waypoints):
+          winners.append(i)
+      if len(winners) > 0:
+        msg = ''
+        for winner in winners:
+          msg += ' ' + self.colors[i].capitalize()
+        console.alert('Winner', msg, button1='Ok', hide_cancel_button=True)
+        self.hide_all()
+        self.show_main_menu()
+        return
       self.turn = self.active_players.index(True)
     console.hud_alert(self.colors[self.turn].capitalize(), duration=0.5)
     self.play_layers[self.turn].start_turn()
@@ -126,6 +149,11 @@ class ControlCenter():
     return True
 
   def load_actual(self):
+    # Clear old waypoints
+    for wp in self.edit_view.waypoints:
+      self.edit_view.remove_subview(wp)
+    self.edit_view.waypoints = []
+    
     # Load image
     img_filename = self.filename
     iv = ui.ImageView(frame=self.bg.bounds)
@@ -133,11 +161,7 @@ class ControlCenter():
     #self.add_subview(iv)
     iv.image = ui.Image(img_filename)
     self.edit_view.img = snapshot(iv)
-
-    # Clear old waypoints
-    for wp in self.edit_view.waypoints:
-      self.edit_view.remove_subview(wp)
-    self.edit_view.waypoints = []
+    self.multiplier = self.edit_view.img.size[1]/self.edit_view.height
 
     # Load waypoints
     json_filename = img_filename[:-3]+'json'
@@ -213,8 +237,14 @@ class ControlCenter():
 
     for wp in self.edit_view.waypoints:
       wp.hidden = True
-
+      
+    alpha_before = self.edit_view.alpha
+    self.edit_view.alpha = 1.0
+    
     snap = snapshot(self.edit_view)
+    
+    self.edit_view.alpha = alpha_before
+    
     with open(self.filename + '.png', 'wb') as fp:
       fp.write(snap.to_png())
 
@@ -236,6 +266,7 @@ class ControlCenter():
     play_menu = ui.View(frame=self.bg.bounds)
     self.bg.add_subview(play_menu)
     buttons = [
+      [ 'iow:close_round_24', None ],
       [ 'iow:ios7_refresh_empty_32', None ],
       [ 'iow:arrow_right_b_32', self.next_turn ]
     ]
@@ -315,8 +346,10 @@ class PlayingLayer(ui.View):
     start_marker.center = tuple(starting_point)
     self.bring_to_front()
     for layer in self.control.play_layers:
-      layer.alpha = 0.4
+      layer.alpha = 0.5
     self.alpha = 1.0
+    for i, wp in enumerate(self.waypoints):
+      wp.hidden = (i < self.waypoints_visited)
     self.set_needs_display()
 
   def touch_began(self, touch):
@@ -324,9 +357,9 @@ class PlayingLayer(ui.View):
     #img_coord = (self.height - touch.location[0], touch
 
   def touch_moved(self, touch):
-    img_loc = (touch.location[0] * self.multiplier, touch.location[1] * self.multiplier)
-    img_loc = tuple(touch.location)
-    wall = self.playfield[img_loc][3] == 255
+    #img_loc = (touch.location[0] * self.multiplier, touch.location[1] * self.multiplier)
+    img_loc = touch.location
+    wall = self.playfield[tuple(touch.location)][3] > 200
 
     if not self.tracking:
       if not self.touch_stale and not wall:
@@ -342,14 +375,21 @@ class PlayingLayer(ui.View):
           self.previous_move.append(tuple(touch.location))
 
     else:
-      (px, py) = touch.prev_location
-      (x, y) = touch.location
-      (dx, dy) = (x-px, y-py)
-      by_x = abs(dx) > abs(dy)
-      factor = dx/dy if by_x else dy/dx
-      self.current_move.append(tuple(touch.location))
-      if wall:
-        self.touch_ended(touch)
+      for step in Vector(touch.prev_location).steps_to(Vector(touch.location)):
+        pos = tuple(step)
+        self.current_move.append(pos)
+        close_to_waypoints = False
+        pos_v = Vector(pos)
+        for i, wp in enumerate(self.waypoints):
+          if pos_v.distance_to(wp.center) < 15:
+            close_to_waypoints = True
+            if i == self.waypoints_visited:
+              self.waypoints_visited += 1
+        wall = self.playfield[pos][3] > 200
+        if wall:
+          if not close_to_waypoints:           
+            self.touch_ended(touch)
+            break
 
   def touch_ended(self, touch):
     self.touch_stale = True
@@ -357,6 +397,8 @@ class PlayingLayer(ui.View):
       self.tracking = False
       self.background_color = 'transparent'
       self.starting_point = touch.location
+      for i, wp in enumerate(self.waypoints):
+        wp.hidden = (i < self.waypoints_visited)
       self.control.show_play_menu()
 
   def draw(self):
@@ -364,15 +406,16 @@ class PlayingLayer(ui.View):
       ui.set_color('black')
       ui.fill_rect(0, 0, self.width, self.height)
     else:
+      base_color = tuple([self.color[i] for i in range(3)])
       if len(self.previous_move) > 0:
         opacity_increment = 1.0/len(self.previous_move)
-      path = self.new_path(self.color)
+      path = self.new_path(base_color)
       alpha_actual = 0
       for i in range(1, len(self.previous_move)):
         alpha_actual += opacity_increment
-        self.draw_segment(self.color + (alpha_actual,), self.previous_move[i-1], self.previous_move[i])
+        self.draw_segment(base_color + (alpha_actual,), self.previous_move[i-1], self.previous_move[i])
       for i in range(1, len(self.current_move)):
-        self.draw_segment(self.color + (0.9,), self.current_move[i-1], self.current_move[i])
+        self.draw_segment(base_color + (0.9,), self.current_move[i-1], self.current_move[i])
 
   def draw_segment(self, color, from_xy, to_xy):
     base_alpha = color[3]
@@ -456,7 +499,7 @@ class MapView(ui.View):
       console.hud_alert('Cannot play - No waypoints on map')
       return
 
-    img = pilImage.open(io.BytesIO(self.img.to_png()))
+    img = pilImage.open(io.BytesIO(self.edit_view.img.to_png()))
     img = img.resize((int(self.width), int(self.height))).load()
     v = PlayingView(starting_point, img, self.multiplier)
     self.superview.add_subview(v)

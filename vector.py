@@ -73,7 +73,7 @@ class Vector (list):
     return self.x * other.x + self.y * other.y
 
   def distance_to(self, other):
-    return (other - self).magnitude
+    return (Vector(other) - self).magnitude
 
   @property
   def magnitude(self):
