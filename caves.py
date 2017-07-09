@@ -9,8 +9,18 @@ from vector import Vector
 from EvenView import EvenView
 
 from composite import *
-import cornermenu
+#import cornermenu
 #from Image import Image as img
+
+def inttuple(input_pair):
+  return (int(input_pair[0]), int(input_pair[1]))
+
+def pil_color(color):
+  color = ui.parse_color(color)
+  result_color = tuple()
+  for band in color:
+    result_color += (int(band*255),)
+  return result_color
 
 class ControlCenter():
   
@@ -35,7 +45,11 @@ class ControlCenter():
     
     playfield_path = os.path.abspath('playfields')
     files = os.listdir(playfield_path)
-    self.set_map_for_play(files[0])
+    for file in files:
+      if file.endswith('.png'):
+        filename = file
+        break
+    self.set_map_for_play(playfield_path+'/'+filename)
     
     self.hide_all()
     self.show_main_menu()
@@ -75,13 +89,14 @@ class ControlCenter():
     self.hide_all()
     #self.show_play_menu()
     self.show_edit_view()
-    self.load_actual()
+    self.load_actual(burn_waypoints_in=True)
+      
     with io.BytesIO(self.edit_view.img.to_png()) as fp:
       playfield = pilImage.open(fp).resize((int(self.bg.width), int(self.bg.height))).load()
 #    for x in range(3000):
 #      try:
 #        pix = playfield[x, 400]
-#        print(pix[3])
+#        (pix[3])
 #      except:
 #        print(x)
 #        break
@@ -103,7 +118,7 @@ class ControlCenter():
       if len(winners) > 0:
         msg = ''
         for winner in winners:
-          msg += ' ' + self.colors[i].capitalize()
+          msg += ' ' + self.colors[winner].capitalize()
         console.alert('Winner', msg, button1='Ok', hide_cancel_button=True)
         self.hide_all()
         self.show_main_menu()
@@ -129,14 +144,14 @@ class ControlCenter():
     self.map_new(sender)
     self.load_actual()
 
-  def load_map(self, next_func=None):
+  def load_map(self, path='playfields', extension='.png', next_func=None):
     # Get image filename
     next_func = next_func if next_func else self.load_actual
-    playfield_path = os.path.abspath('playfields')
+    playfield_path = path #os.path.abspath(path)
     files = os.listdir(playfield_path)
     spec = []
     for filename in files:
-      if filename.endswith('.png'):
+      if not extension or filename.endswith(extension):
         spec.append((filename[:-4], functools.partial(next_func, playfield_path+'/'+filename)))
 
     if len(spec) == 0:
@@ -148,7 +163,7 @@ class ControlCenter():
       menu_view = MapPicker(spec)
     return True
 
-  def load_actual(self):
+  def load_actual(self, burn_waypoints_in=False):
     # Clear old waypoints
     for wp in self.edit_view.waypoints:
       self.edit_view.remove_subview(wp)
@@ -163,17 +178,36 @@ class ControlCenter():
     self.edit_view.img = snapshot(iv)
     self.multiplier = self.edit_view.img.size[1]/self.edit_view.height
 
-    # Load waypoints
+    # Load settings
     json_filename = img_filename[:-3]+'json'
     if os.path.exists(json_filename):
       with open(json_filename) as fp:
-        locations = json.load(fp)
+        settings = json.load(fp)
+      if isinstance(settings, dict):
+        locations = settings['waypoint_locations']
+        self.bg.image = ui.Image.named(settings['bg_filename'])
+        self.edit_view.bg_filename = settings['bg_filename']
+      else:
+        locations = settings
+        self.bg.image = ui.Image.named('backgrounds/caves.jpg')
+        self.edit_view.bg_filename = None
       for loc in locations:
         wp = self.edit_view.add_waypoint()
         wp.center = loc
+        
+    if burn_waypoints_in:
+      with ui.ImageContext(self.edit_view.width, self.edit_view.height) as ctx:
+        self.edit_view.img.draw()
+        ui.set_blend_mode(ui.BLEND_CLEAR)
+        ui.set_color('black')
+        for wp in self.edit_view.waypoints:
+          (x,y) = wp.center
+          path = ui.Path.oval(x-15, y-15, 30, 30)
+          path.fill()
+        self.edit_view.img = ctx.get_image()
   
   def create_edit_view(self):
-    edit_view = MapView(frame=self.bg.bounds)
+    edit_view = MapView(self, frame=self.bg.bounds)
     self.bg.add_subview(edit_view)
     return edit_view
     
@@ -187,6 +221,7 @@ class ControlCenter():
   def create_edit_menu(self):
     buttons = [
       [ 'iow:ios7_undo_24', self.edit_view.undo_last ],
+      [ 'iow:image_24', self.edit_view.choose_background ],
       [ 'iow:ios7_circle_outline_24', self.edit_view.toggle_digging ],
       [ 'iow:close_24', self.quit_map ],
       [ 'iow:checkmark_24', self.save_map ]
@@ -199,7 +234,7 @@ class ControlCenter():
     bottom_menu = EvenView(margin = 20)
     bottom_menu.flex = 'WT'
     bottom_menu.frame = (0, h - bottom_menu_height, w, bottom_menu_height)
-    #bottom_menu.background_color = 'white'
+    bottom_menu.background_color = 'white'
     self.bg.add_subview(bottom_menu)
     for icon, func in buttons:
       button = ui.Button(image = ui.Image.named(icon))
@@ -252,8 +287,17 @@ class ControlCenter():
       wp.hidden = False
 
     waypoint_locations = [list(wp.center) for wp in self.edit_view.waypoints]
+    
+    if self.edit_view.bg_filename:
+      settings = {
+        'bg_filename': self.edit_view.bg_filename,
+        'waypoint_locations': waypoint_locations
+      }
+    else:
+      settings = waypoint_locations
+      
     with open(self.filename + '.json', 'w') as fp:
-      json.dump(waypoint_locations, fp)
+      json.dump(settings, fp)
 
     self.quit_map(sender)
 
@@ -340,16 +384,18 @@ class PlayingLayer(ui.View):
   def start_turn(self):
     starting_point = Vector(self.starting_point)
     (x,y) = starting_point
-    start_marker = ui.View(frame=(x,y,30,30), corner_radius=15, alpha=0.5, touch_enabled=False)
-    start_marker.background_color = '#ffc688'
-    self.add_subview(start_marker)
-    start_marker.center = tuple(starting_point)
+    #start_marker = ui.View(frame=(x,y,30,30), corner_radius=15, alpha=0.5, touch_enabled=False)
+    #start_marker.background_color = '#ffc688'
+    #self.add_subview(start_marker)
+    self.start_area = self.flood_fill_start_marker(tuple(starting_point), self.color)
+    #self.add_subview(self.start_area)
+    #start_marker.center = tuple(starting_point)
     self.bring_to_front()
     for layer in self.control.play_layers:
       layer.alpha = 0.5
     self.alpha = 1.0
     for i, wp in enumerate(self.waypoints):
-      wp.hidden = (i < self.waypoints_visited)
+      wp.background_color = '#6cd655' if i < self.waypoints_visited else '#a2c2ff'
     self.set_needs_display()
 
   def touch_began(self, touch):
@@ -358,14 +404,16 @@ class PlayingLayer(ui.View):
 
   def touch_moved(self, touch):
     #img_loc = (touch.location[0] * self.multiplier, touch.location[1] * self.multiplier)
+    tl = touch.location
     img_loc = touch.location
-    wall = self.playfield[tuple(touch.location)][3] > 200
+    wall = self.playfield[tuple(tl)][3] > 200
 
     if not self.tracking:
       if not self.touch_stale and not wall:
         v = Vector(touch.location)
         v = v - self.starting_point
-        if v.magnitude < 15:
+        int_tl = (int(tl[0]), int(tl[1]))
+        if v.magnitude < 15 and self.start_area[int_tl][3] > 0:
           self.tracking = True
           self.background_color = 'black'
           for view in self.subviews:
@@ -375,6 +423,7 @@ class PlayingLayer(ui.View):
           self.previous_move.append(tuple(touch.location))
 
     else:
+      prev = Vector(touch.prev_location)
       for step in Vector(touch.prev_location).steps_to(Vector(touch.location)):
         pos = tuple(step)
         self.current_move.append(pos)
@@ -388,17 +437,21 @@ class PlayingLayer(ui.View):
         wall = self.playfield[pos][3] > 200
         if wall:
           if not close_to_waypoints:           
-            self.touch_ended(touch)
+            self.end_touch(prev)
             break
+        prev = Vector(pos)
 
   def touch_ended(self, touch):
+    self.end_touch(Vector(touch.location))
+    
+  def end_touch(self, end_location):
     self.touch_stale = True
     if self.tracking:
       self.tracking = False
       self.background_color = 'transparent'
-      self.starting_point = touch.location
+      self.starting_point = end_location
       for i, wp in enumerate(self.waypoints):
-        wp.hidden = (i < self.waypoints_visited)
+        wp.background_color = '#6cd655' if i < self.waypoints_visited else '#a2c2ff'
       self.control.show_play_menu()
 
   def draw(self):
@@ -433,14 +486,48 @@ class PlayingLayer(ui.View):
     path.line_width = line_width
     path.line_cap_style = ui.LINE_CAP_ROUND
     return path
+    
+  def flood_fill_start_marker(self, starting_point, base_color):
+    marker_color = pil_color('#ffc688')
+    #marker_color = pil_color(base_color)
+    marker_color = tuple([min(marker_color[i], 255) for i in range(3)])
+    start_area_view = ui.ImageView(frame=self.bounds)
+    start_area_view.touch_enabled = False
+    with io.BytesIO(snapshot(start_area_view).to_png()) as fp:
+      pil = pilImage.open(fp).resize((int(self.width), int(self.height)))
+      canvas = pil.load()
+      starting_point = inttuple(starting_point)
+      canvas[starting_point] = marker_color + (125,)
+      edge = [starting_point]
+      sp_vector = Vector(starting_point)
+      while edge:
+        newedge = []
+        for (x, y) in edge:
+          for candidate in ((x+1, y), (x-1, y), (x, y+1), (x, y-1)):
+            distance = sp_vector.distance_to(candidate)
+            if distance <= 15 and self.playfield[candidate][3] == 0 and canvas[candidate][3] == 0:
+              canvas[candidate] = marker_color + (125,) #(int(10+230/15*distance), )
+              newedge.append(candidate)
+        edge = newedge
+      
+    with io.BytesIO() as fp:
+      pil.save(fp, 'PNG')
+      start_area_view.image = ui.Image.from_data(fp.getvalue())
+      
+    self.add_subview(start_area_view)
+
+    return canvas
+        
 
 class MapView(ui.View):
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, control, *args, **kwargs):
     super().__init__(*args, **kwargs)
+    self.control = control
     self.multiplier = 1.0
     #self.iv = ui.ImageView(args, **kwargs)
     self.filename = ''
+    self.bg_filename = None # Default is caves.jpg
     #self.add_subview(self.iv)
     self.alpha = 0.9
     self.digging = True
@@ -492,18 +579,18 @@ class MapView(ui.View):
 #
 #    menu_view = MenuView(spec)
 
-  def play(self):
-    if len(self.waypoints) > 0:
-      starting_point = self.waypoints[0].center
-    else:
-      console.hud_alert('Cannot play - No waypoints on map')
-      return
-
-    img = pilImage.open(io.BytesIO(self.edit_view.img.to_png()))
-    img = img.resize((int(self.width), int(self.height))).load()
-    v = PlayingView(starting_point, img, self.multiplier)
-    self.superview.add_subview(v)
-    v.frame = self.superview.bounds
+#  def play(self):
+#    if len(self.waypoints) > 0:
+#      starting_point = self.waypoints[0].center
+#    else:
+#      console.hud_alert('Cannot play - No waypoints on map')
+#      return
+#
+#    img = pilImage.open(io.BytesIO(self.edit_view.img.to_png()))
+#    img = img.resize((int(self.width), int(self.height))).load()
+#    v = PlayingView(starting_point, img, self.multiplier)
+#    self.superview.add_subview(v)
+#    v.frame = self.superview.bounds
 
   def touch_began(self, data):
     (x,y) = data.location
@@ -559,6 +646,12 @@ class MapView(ui.View):
     if self.last_img is not None:
       self.img = self.last_img
       
+  def choose_background(self, sender):
+    self.control.load_map(path='backgrounds', extension=None, next_func=self.load_background)
+    
+  def load_background(self, bg_filename):
+    self.control.bg.image = ui.Image.named(bg_filename)
+    self.bg_filename = bg_filename
 
 class WayPointView(Solid, Round, DefaultLabel):
 
@@ -796,7 +889,8 @@ class MapPicker(ui.View):
 
 if __name__ == '__main__':
   v = ui.ImageView()
-  v.image = ui.Image.named("caves.jpg")
+  #v.image = ui.Image.named("underwater.jpg")
+  v.image = ui.Image.named("backgrounds/caves.jpg")
   v.name = 'Caves of Soukka'
 
   v.present('full_screen', hide_title_bar=True, orientations=['portrait'])
