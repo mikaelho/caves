@@ -77,6 +77,7 @@ class ControlCenter():
     self.main_menu.hidden = True
     
   def show_main_menu(self):
+    self.bg.image = ui.Image.named("backgrounds/caves.jpg")
     self.main_menu.hidden = False
     self.main_menu.bring_to_front()
     
