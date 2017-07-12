@@ -1,9 +1,9 @@
 #coding: utf-8
 import ui
-import console
+import console, dialogs
 import Image as pilImage
-import io, os, json, time
-import functools
+import io, os, json, time, math
+import functools, contextlib
 import dialogs
 from vector import Vector
 from EvenView import EvenView
@@ -25,14 +25,21 @@ def pil_color(color):
 class ControlCenter():
   
   menu_color = '#888888'
-  colors = ['green', 'red', 'blue', 'orange']
+  colors = ['green', 'red', 'blue', 'orange'] #, 'brown']
+#  icon_names = [
+#    'emj:Snake',
+#    'emj:Octopus',
+#    'emj:Whale',
+#    'emj:Honeybee',
+#    'emj:Monkey'
+#  ]
   icon_names = [
-    'emj:Snake',
-    'emj:Octopus',
-    'emj:Whale',
-    'emj:Honeybee'
+    'spc:PlayerShip1Green',
+    'spc:PlayerShip2Red',
+    'spc:PlayerShip3Blue',
+    'spc:PlayerShip2Orange'
   ]
-  active_players = [True]*4
+  active_players = [True]*len(colors)
   
   def __init__(self, bg_view):
     self.bg = bg_view
@@ -42,17 +49,18 @@ class ControlCenter():
     self.edit_menu = self.create_edit_menu()
     self.play_menu = self.create_play_menu()
     self.play_layers = self.create_play_layers()
+    self.set_default_map()
+    self.hide_all()
+    self.show_main_menu()
     
-    playfield_path = os.path.abspath('playfields')
+  def set_default_map(self):
+    playfield_path = 'playfields'
     files = os.listdir(playfield_path)
     for file in files:
       if file.endswith('.png'):
         filename = file
         break
     self.set_map_for_play(playfield_path+'/'+filename)
-    
-    self.hide_all()
-    self.show_main_menu()
     
   def hide_all(self):
     self.hide_main_menu()
@@ -88,7 +96,7 @@ class ControlCenter():
     
   def play(self, sender):
     self.hide_all()
-    #self.show_play_menu()
+    #self.show_play_menu() dialog
     self.show_edit_view()
     self.load_actual(burn_waypoints_in=True)
       
@@ -125,8 +133,30 @@ class ControlCenter():
         self.show_main_menu()
         return
       self.turn = self.active_players.index(True)
-    console.hud_alert(self.colors[self.turn].capitalize(), duration=0.5)
-    self.play_layers[self.turn].start_turn()
+
+    self.hide_play_menu()
+    if self.active_players.count(True) > 1:
+      turn_button = ui.Button(frame=self.bg.bounds, background_color=(0, 0, 0, 0.9))
+      turn_button.title = '  Tap to play'
+      turn_button.tint_color = self.colors[self.turn]
+      
+      def turn_start_action(sender):
+        self.bg.remove_subview(turn_button)
+        self.play_layers[self.turn].start_turn()
+        
+      turn_button.action = turn_start_action
+      self.bg.add_subview(turn_button)
+      turn_button.image = self.main_menu.icons['player'+str(self.turn)]
+    else:
+      self.play_layers[self.turn].start_turn()
+
+  def quit_game(self, sender):
+    try:
+      console.alert('Quit game?', button1='Ok')
+    except KeyboardInterrupt:
+      return
+    self.hide_all()
+    self.show_main_menu()
 
 #  def play_multi(self, sender):
 #    pass
@@ -137,12 +167,15 @@ class ControlCenter():
 
   def map_new(self, sender):
     self.hide_all()
+    self.filename = ''
     self.edit_view.fill()
     self.show_edit_view()
     self.show_edit_menu()
 
   def map_edit(self, sender):
+    filename_safe = self.filename
     self.map_new(sender)
+    self.filename = filename_safe
     self.load_actual()
 
   def load_map(self, path='playfields', extension='.png', next_func=None):
@@ -221,13 +254,17 @@ class ControlCenter():
     
   def create_edit_menu(self):
     buttons = [
-      [ 'iow:ios7_undo_24', self.edit_view.undo_last ],
-      [ 'iow:image_24', self.edit_view.choose_background ],
-      [ 'iow:ios7_circle_outline_24', self.edit_view.toggle_digging ],
       [ 'iow:close_24', self.quit_map ],
+      [ 'iow:ios7_undo_24', self.edit_view.undo_last ],
+      [ 'iow:ios7_redo_24', self.edit_view.redo_next ],
+      [ 'iow:ios7_trash_24', self.edit_view.delete ],
+      [ 'iow:image_24', self.edit_view.choose_background ],
+      [ 'iow:beaker_24', self.edit_view.flood_fill ],
+      [ 'iow:ios7_circle_outline_24', self.edit_view.toggle_digging ],
       [ 'iow:checkmark_24', self.save_map ]
     ]
-    return self.setup_bottom_menu(buttons)
+    menu = self.setup_bottom_menu(buttons)
+    return menu
     
   def setup_bottom_menu(self, buttons):
     bottom_menu_height = 40
@@ -240,15 +277,16 @@ class ControlCenter():
     for icon, func in buttons:
       button = ui.Button(image = ui.Image.named(icon))
       button.action = func
+      button.name = func.__name__
       button.tint_color = self.menu_color
       bottom_menu.add_subview(button)
-      
     return bottom_menu
     
   def hide_edit_menu(self):
     self.edit_menu.hidden = True
     
   def show_edit_menu(self):
+    self.edit_view.set_buttons()
     self.edit_menu.hidden = False
     self.edit_menu.bring_to_front()
 
@@ -311,8 +349,7 @@ class ControlCenter():
     play_menu = ui.View(frame=self.bg.bounds)
     self.bg.add_subview(play_menu)
     buttons = [
-      [ 'iow:close_round_24', None ],
-      [ 'iow:ios7_refresh_empty_32', None ],
+      [ 'iow:close_round_24', self.quit_game ],
       [ 'iow:arrow_right_b_32', self.next_turn ]
     ]
     return self.setup_bottom_menu(buttons)
@@ -343,9 +380,10 @@ class ControlCenter():
       layer.hidden = True
     
   def show_play_layers(self):
-    for layer in self.play_layers:
-      layer.hidden = False
-      layer.bring_to_front()
+    pass
+#    for layer in self.play_layers:
+#      layer.hidden = False
+#      layer.bring_to_front()
 
 
 #class PlayingView(ui.View):
@@ -373,6 +411,7 @@ class PlayingLayer(ui.View):
     self.previous_move = []
     self.current_move = []
     self.touch_stale = False
+    self.animate_counter = -1
     self.waypoints_visited = 0
     
   def set_map(self, waypoints, playfield, multiplier=1.0):
@@ -391,6 +430,7 @@ class PlayingLayer(ui.View):
     self.start_area = self.flood_fill_start_marker(tuple(starting_point), self.color)
     #self.add_subview(self.start_area)
     #start_marker.center = tuple(starting_point)
+    self.hidden = False
     self.bring_to_front()
     for layer in self.control.play_layers:
       layer.alpha = 0.5
@@ -454,6 +494,15 @@ class PlayingLayer(ui.View):
       for i, wp in enumerate(self.waypoints):
         wp.background_color = '#6cd655' if i < self.waypoints_visited else '#a2c2ff'
       self.control.show_play_menu()
+      self.animate_counter = -1
+      self.animate_turn()
+      
+  def animate_turn(self):
+    if self.animate_counter < len(self.current_move):
+      self.animate_counter += max(20, int(len(self.current_move)/40))
+      self.animate_counter = min(len(self.current_move)-1, self.animate_counter)
+      ui.delay(self.animate_turn, 0.05)
+      self.set_needs_display()
 
   def draw(self):
     if self.tracking:
@@ -461,15 +510,22 @@ class PlayingLayer(ui.View):
       ui.fill_rect(0, 0, self.width, self.height)
     else:
       base_color = tuple([self.color[i] for i in range(3)])
-      if len(self.previous_move) > 0:
-        opacity_increment = 1.0/len(self.previous_move)
-      path = self.new_path(base_color)
-      alpha_actual = 0
-      for i in range(1, len(self.previous_move)):
-        alpha_actual += opacity_increment
-        self.draw_segment(base_color + (alpha_actual,), self.previous_move[i-1], self.previous_move[i])
-      for i in range(1, len(self.current_move)):
-        self.draw_segment(base_color + (0.9,), self.current_move[i-1], self.current_move[i])
+#      if len(self.previous_move) > 0:
+      opacity_increment = 0.002
+      alpha_incremental = 1.0 - self.animate_counter*opacity_increment
+
+
+      #path = self.new_path(base_color)
+#      alpha_actual = 0
+#      for i in range(1, len(self.previous_move)):
+#        alpha_actual += opacity_increment
+#        self.draw_segment(base_color + (alpha_actual,), self.previous_move[i-1], self.previous_move[i])
+      #print(self.animate_counter)
+      if self.animate_counter > 0:
+        for i in range(1, self.animate_counter):
+          alpha_actual = max(0, alpha_incremental)
+          self.draw_segment(base_color + (alpha_actual,), self.current_move[i-1], self.current_move[i])
+          alpha_incremental += opacity_increment
 
   def draw_segment(self, color, from_xy, to_xy):
     base_alpha = color[3]
@@ -507,7 +563,19 @@ class PlayingLayer(ui.View):
           for candidate in ((x+1, y), (x-1, y), (x, y+1), (x, y-1)):
             distance = sp_vector.distance_to(candidate)
             if distance <= 15 and self.playfield[candidate][3] == 0 and canvas[candidate][3] == 0:
-              canvas[candidate] = marker_color + (125,) #(int(10+230/15*distance), )
+              ceil_dist = math.ceil(distance)
+              if ceil_dist == 15:
+                color = pil_color((1,1,1,0.9))
+              elif ceil_dist == 14:
+                color = pil_color((0.5,0.5,0.5,0.9))
+              elif ceil_dist == 13:
+                color = pil_color((0,0,0,0.9))
+              elif ceil_dist == 12:
+                color = pil_color((0.5,0.5,0.5,0.9))
+              else:
+                color = pil_color((1,1,1,0.01))
+              canvas[candidate] = color
+              #canvas[candidate] = marker_color + (125,) #(int(10+230/15*distance), )
               newedge.append(candidate)
         edge = newedge
       
@@ -527,18 +595,23 @@ class MapView(ui.View):
     self.control = control
     self.multiplier = 1.0
     #self.iv = ui.ImageView(args, **kwargs)
-    self.filename = ''
+    #self.filename = ''
     self.bg_filename = None # Default is caves.jpg
     #self.add_subview(self.iv)
     self.alpha = 0.9
     self.digging = True
+    self.flood_filling = False
+    self.touch_start = None
     self.target_size = (self.width, self.height)
     self.dragging_waypoint = False
     self.last_img = None
     self.waypoints = []
+    self.history_capacity = 10
     self.fill()
 
   def fill(self):
+    self.history = []
+    self.future = []
     with ui.ImageContext(self.width, self.height) as ctx:
       ui.set_color('black')
       ui.fill_rect(0, 0, self.width, self.height)
@@ -571,40 +644,24 @@ class MapView(ui.View):
     else:
       sender.image=ui.Image.named('iow:ios7_circle_filled_24')
 
-#  def show_menu(self, sender):
-#    spec = [
-#      ('Play', self.play),
-#      ('Save', self.save_map),
-#      ('Load', self.load_map)
-#    ]
-#
-#    menu_view = MenuView(spec)
-
-#  def play(self):
-#    if len(self.waypoints) > 0:
-#      starting_point = self.waypoints[0].center
-#    else:
-#      console.hud_alert('Cannot play - No waypoints on map')
-#      return
-#
-#    img = pilImage.open(io.BytesIO(self.edit_view.img.to_png()))
-#    img = img.resize((int(self.width), int(self.height))).load()
-#    v = PlayingView(starting_point, img, self.multiplier)
-#    self.superview.add_subview(v)
-#    v.frame = self.superview.bounds
-
-  def touch_began(self, data):
-    (x,y) = data.location
+  def touch_began(self, touch):
+    (x,y) = touch.location
     if x < 20:
       self.dragging_waypoint = True
       self.w = self.add_waypoint()
     else:
-      self.last_img = self.img #snapshot(self)
+      self.touch_start = tuple(touch.location)
+      self.add_to_history()
 
   def touch_moved(self, data):
     if self.dragging_waypoint:
       self.w.center = data.location
       return
+    if self.flood_filling:
+      if Vector(data.location).distance_to(self.touch_start) < 10:
+        return
+      else:
+        self.flood_fill(self.control.edit_menu['flood_fill'])
     (w, h) = self.img.size
     with ui.ImageContext(w,h) as ctx:
       self.img.draw()
@@ -616,7 +673,7 @@ class MapView(ui.View):
       path = ui.Path()
       path.move_to(px, py)
       path.line_to(x, y)
-      path.line_width = 20 #* self.multiplier #if self.digging else 1
+      path.line_width = 30 #* self.multiplier #if self.digging else 1
       path.line_cap_style = ui.LINE_CAP_ROUND
       path.stroke()
       self.img = ctx.get_image()
@@ -644,8 +701,33 @@ class MapView(ui.View):
       wp.text=str(i+1)
 
   def undo_last(self, sender):
-    if self.last_img is not None:
-      self.img = self.last_img
+    self.future.insert(0, self.img)
+    self.img = self.history.pop()
+    self.set_buttons()
+      
+  def redo_next(self, sender):
+    self.history.append(self.img)
+    self.img = self.future[0]
+    self.future = self.future[1:]
+    self.set_buttons()
+    
+  def set_buttons(self):
+    self.control.edit_menu['undo_last'].enabled = (len(self.history) > 0)
+    self.control.edit_menu['redo_next'].enabled = (len(self.future) > 0)
+      
+  def delete(self, sender):
+    if self.control.filename != '':
+      (name, _) = os.path.splitext(os.path.basename(self.control.filename))
+      try:
+        console.alert('Delete', name, button1='Ok')
+      except KeyboardInterrupt:
+        return
+      os.remove(self.control.filename)
+      with contextlib.suppress(FileNotFoundError):
+        os.remove(self.control.filename[:-4]+'.json')
+      self.control.set_default_map()
+    else:
+      self.control.quit_map(sender)
       
   def choose_background(self, sender):
     self.control.load_map(path='backgrounds', extension=None, next_func=self.load_background)
@@ -653,6 +735,19 @@ class MapView(ui.View):
   def load_background(self, bg_filename):
     self.control.bg.image = ui.Image.named(bg_filename)
     self.bg_filename = bg_filename
+    
+  def flood_fill(self, sender):
+    self.flood_filling = self.flood_filling == False
+    sender.tint_color = 'green' if self.flood_filling else self.control.menu_color
+    
+  def add_to_history(self):
+    #self.last_img = self.img # snapshot(self)
+    self.history.append(self.img)
+    self.future = []
+    if len(self.history) > self.history_capacity:
+      self.history = self.history[-self.history_capacity]
+    self.set_buttons()
+    
 
 class WayPointView(Solid, Round, DefaultLabel):
 
@@ -713,18 +808,18 @@ class MenuView(ui.View):
     self.menu_button(title, action, 50, (0.9*w, 0.05*h+25))
     
     self.icons = {}
-    for i in range(4):
+    for i in range(len(self.control.icon_names)):
       icon =   ui.Image.named(self.control.icon_names[i]).with_rendering_mode(ui.RENDERING_MODE_ORIGINAL)
       name = 'player'+str(i)
       self.icons[name] = icon
       btn = self.menu_color_button(
         name, self.control.colors[i], icon,
-        (0.05*w + i*49, 0.25*h))
+        (0.05*w + i*51, 0.25*h))
       if i > 0:
         self.toggle(btn)
         
     (title, action) = spec[0]
-    self.menu_button(title, action, 50, (0.7*w, 0.25*h+25))
+    self.menu_button(title, action, 50, (0.9*w, 0.25*h+25))
     
     #btn = self.create_button
     #self.set_menu('main', spec)
