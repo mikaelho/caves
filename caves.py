@@ -708,7 +708,7 @@ class MapView(ui.View):
     self.remove_subview(wp_view)
     del self.waypoints[i]
     for (i, wp) in enumerate(self.waypoints):
-      wp.text=str(i+1)
+      wp['Label'].text=str(i+1)
 
   def undo_last(self, sender):
     self.future.insert(0, self.img)
@@ -759,7 +759,17 @@ class MapView(ui.View):
     self.set_buttons()
     
 
-class WayPointView(Solid, Round, DefaultLabel):
+class WayPointView(ui.View): #(Solid, Round, DefaultLabel):
+  
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self.corner_radius = self.height/2
+    l = ui.Label()
+    self.add_subview(l)
+    l.frame = self.bounds
+    l.flex = 'WH'
+    l.name = 'Label'
+    l.alignment = ui.ALIGN_CENTER
 
   def touch_moved(self, touch):
     (x, y) = ui.convert_point(touch.location, self, self.superview)
