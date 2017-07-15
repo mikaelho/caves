@@ -7,8 +7,8 @@ import functools, contextlib
 import dialogs
 from vector import Vector
 from EvenView import EvenView
-from composite import *
 
+#from composite import *
 #import cornermenu
 #from Image import Image as img
 
@@ -785,10 +785,6 @@ def snapshot(view):
     view.draw_snapshot()
     return ctx.get_image()
 
-
-class BlurredButton(Blurred):
-  def spec(self):
-    return [ui.Button] + super().spec()
 
 class MenuView(ui.View):
 
