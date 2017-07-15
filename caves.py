@@ -7,8 +7,8 @@ import functools, contextlib
 import dialogs
 from vector import Vector
 from EvenView import EvenView
-
 from composite import *
+
 #import cornermenu
 #from Image import Image as img
 
@@ -25,19 +25,29 @@ def pil_color(color):
 class ControlCenter():
   
   menu_color = '#888888'
-  colors = ['green', 'red', 'blue', 'orange'] #, 'brown']
-#  icon_names = [
-#    'emj:Snake',
-#    'emj:Octopus',
-#    'emj:Whale',
-#    'emj:Honeybee',
-#    'emj:Monkey'
-#  ]
+  colors = ['green', 'red', 'blue', 'orange', 'brown']
   icon_names = [
-    'spc:PlayerShip1Green',
-    'spc:PlayerShip2Red',
-    'spc:PlayerShip3Blue',
-    'spc:PlayerShip2Orange'
+    'emj:Snake',
+    'emj:Octopus',
+    'emj:Whale',
+    'emj:Honeybee',
+    'emj:Monkey'
+  ]
+
+#  icon_names = [
+#    'spc:PlayerShip1Green',
+#    'spc:PlayerShip2Red',
+#    'spc:PlayerShip3Blue',
+#    'spc:PlayerShip2Orange'
+#  ]
+
+  small_icon_names = [
+    'spc:PlayerLife1Green',
+    'spc:PlayerLife2Red',
+    'spc:PlayerLife3Blue',
+    'spc:PlayerLife2Orange',
+    'spc:PlayerLife3Red'
+    
   ]
   active_players = [True]*len(colors)
   
@@ -494,38 +504,38 @@ class PlayingLayer(ui.View):
       for i, wp in enumerate(self.waypoints):
         wp.background_color = '#6cd655' if i < self.waypoints_visited else '#a2c2ff'
       self.control.show_play_menu()
-      self.animate_counter = -1
-      self.animate_turn()
-      
-  def animate_turn(self):
-    if self.animate_counter < len(self.current_move):
-      self.animate_counter += max(20, int(len(self.current_move)/40))
-      self.animate_counter = min(len(self.current_move)-1, self.animate_counter)
-      ui.delay(self.animate_turn, 0.05)
+      self.animate_counter = len(self.current_move)
       self.set_needs_display()
+      
+#  def animate_turn(self):
+#    if self.animate_counter < len(self.current_move):
+#      self.animate_counter += max(20, int(len(self.current_move)/40))
+#      self.animate_counter = min(len(self.current_move)-1, self.animate_counter)
+#      ui.delay(self.animate_turn, 0.05)
+#      self.update_image()
 
   def draw(self):
     if self.tracking:
       ui.set_color('black')
       ui.fill_rect(0, 0, self.width, self.height)
     else:
+      if self.animate_counter < len(self.current_move):
+        self.animate_counter += max(20, int(len(self.current_move)/40))
+        self.animate_counter = min(len(self.current_move)-1, self.animate_counter)
+        #self.set_needs_display()
       base_color = tuple([self.color[i] for i in range(3)])
 #      if len(self.previous_move) > 0:
-      opacity_increment = 0.002
+      opacity_increment = 1.0/(len(self.current_move)+1) # 0.002
       alpha_incremental = 1.0 - self.animate_counter*opacity_increment
-
-
-      #path = self.new_path(base_color)
-#      alpha_actual = 0
-#      for i in range(1, len(self.previous_move)):
-#        alpha_actual += opacity_increment
-#        self.draw_segment(base_color + (alpha_actual,), self.previous_move[i-1], self.previous_move[i])
-      #print(self.animate_counter)
       if self.animate_counter > 0:
         for i in range(1, self.animate_counter):
           alpha_actual = max(0, alpha_incremental)
           self.draw_segment(base_color + (alpha_actual,), self.current_move[i-1], self.current_move[i])
           alpha_incremental += opacity_increment
+#        pos1 = self.current_move[self.animate_counter - 2]
+#        pos2 = self.current_move[self.animate_counter - 1]
+#        angle = (Vector(pos2) - Vector(pos1)).degrees
+        #print(self.animate_counter, angle)
 
   def draw_segment(self, color, from_xy, to_xy):
     base_alpha = color[3]
@@ -808,10 +818,13 @@ class MenuView(ui.View):
     self.menu_button(title, action, 50, (0.9*w, 0.05*h+25))
     
     self.icons = {}
+    self.small_icons = {}
     for i in range(len(self.control.icon_names)):
       icon =   ui.Image.named(self.control.icon_names[i]).with_rendering_mode(ui.RENDERING_MODE_ORIGINAL)
+      small_icon = ui.Image.named(self.control.small_icon_names[i]).with_rendering_mode(ui.RENDERING_MODE_ORIGINAL)
       name = 'player'+str(i)
       self.icons[name] = icon
+      self.small_icons[name] = small_icon
       btn = self.menu_color_button(
         name, self.control.colors[i], icon,
         (0.05*w + i*51, 0.25*h))
