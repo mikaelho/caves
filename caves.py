@@ -25,13 +25,13 @@ def pil_color(color):
 class ControlCenter():
   
   menu_color = '#888888'
-  colors = ['green', 'red', 'blue', 'orange', 'brown']
+  colors = ['green', 'red', 'blue', 'orange', 'violet']
   icon_names = [
     'emj:Snake',
     'emj:Octopus',
     'emj:Whale',
     'emj:Honeybee',
-    'emj:Monkey'
+    'emj:Lady_Beetle'
   ]
 
 #  icon_names = [
