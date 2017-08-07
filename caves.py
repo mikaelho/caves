@@ -25,7 +25,7 @@ def pil_color(color):
 class ControlCenter():
   
   menu_color = '#888888'
-  colors = ['green', 'red', 'blue', 'orange', 'violet']
+  colors = ['green', 'red', 'blue', 'orange', 'deeppink']
   icon_names = [
     'emj:Snake',
     'emj:Octopus',
@@ -105,6 +105,10 @@ class ControlCenter():
     self.main_menu.map_btn.title = name
     
   def play(self, sender):
+#    self.mode = console.alert('Race mode',
+#      button1='1. Blind draw',
+#      button2='2. Timed vectors'
+#    )
     self.hide_all()
     #self.show_play_menu() dialog
     self.show_edit_view()
@@ -269,7 +273,7 @@ class ControlCenter():
       [ 'iow:ios7_redo_24', self.edit_view.redo_next ],
       [ 'iow:ios7_trash_24', self.edit_view.delete ],
       [ 'iow:image_24', self.edit_view.choose_background ],
-      [ 'iow:beaker_24', self.edit_view.flood_fill ],
+      #[ 'iow:beaker_24', self.edit_view.flood_fill ],
       [ 'iow:ios7_circle_outline_24', self.edit_view.toggle_digging ],
       [ 'iow:checkmark_24', self.save_map ]
     ]
@@ -597,6 +601,9 @@ class PlayingLayer(ui.View):
 
     return canvas
         
+
+#class TimedVectorPlayingLayer(PlayingLayer):
+
 
 class MapView(ui.View):
 
