@@ -16,23 +16,19 @@ def inttuple(input_pair):
   return (int(input_pair[0]), int(input_pair[1]))
 
 def pil_color(color):
-  color = ui.parse_color(color)
-  result_color = tuple()
-  for band in color:
-    result_color += (int(band*255),)
-  return result_color
+  return tuple(int(band*255) for band in ui.parse_color(color))
 
 class ControlCenter():
   
   menu_color = '#888888'
-  colors = ['green', 'red', 'blue', 'orange', 'deeppink']
-  icon_names = [
+  colors = ('green', 'red', 'blue', 'orange', 'deeppink')
+  icon_names = (
     'emj:Snake',
     'emj:Octopus',
     'emj:Whale',
     'emj:Honeybee',
     'emj:Lady_Beetle'
-  ]
+  )
 
 #  icon_names = [
 #    'spc:PlayerShip1Green',
@@ -41,14 +37,13 @@ class ControlCenter():
 #    'spc:PlayerShip2Orange'
 #  ]
 
-  small_icon_names = [
+  small_icon_names = (
     'spc:PlayerLife1Green',
     'spc:PlayerLife2Red',
     'spc:PlayerLife3Blue',
     'spc:PlayerLife2Orange',
-    'spc:PlayerLife3Red'
-    
-  ]
+    'spc:PlayerLife3Red' 
+  )
   active_players = [True]*len(colors)
   
   def __init__(self, bg_view):
@@ -134,10 +129,8 @@ class ControlCenter():
     try:
       self.turn += self.active_players[self.turn:].index(True)
     except ValueError:
-      winners = []
-      for i, layer in enumerate(self.play_layers):
-        if layer.waypoints_visited == len(layer.waypoints):
-          winners.append(i)
+      winners = [i for i, layer in enumerate(self.play_layers)
+                 if layer.waypoints_visited == len(layer.waypoints)]
       if len(winners) > 0:
         msg = ''
         for winner in winners:
