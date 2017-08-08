@@ -1,6 +1,6 @@
 # Caves of Soukka
 
-A finger-tracing racing game for Pythonista.
+A finger-tracing racing game for Pythonista, available on [GitHub](https://github.com/mikaelho/caves).
 
 ![Main screen](https://raw.githubusercontent.com/mikaelho/caves/master/play_images/main_screen.jpg)
 
@@ -39,3 +39,7 @@ This example was created by using the same image as both the playfield and the b
 A nice option especially for the kids (and other artistic people) is to design the playfield on paper. It is easy to take a picture and then follow the above process to turn it into a playable object.
 
 ![](https://raw.githubusercontent.com/mikaelho/caves/master/play_images/edit_drawing.jpg)
+
+## Note
+
+Note that this game and especially the included playfields have been created and tested only on an iPhone 6s Plus. This probably makes them ugly and too easy on iPad, and too difficult on a smaller iPhone. Your feedback is much appreciated.
