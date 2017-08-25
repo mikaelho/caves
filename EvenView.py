@@ -16,9 +16,8 @@ class EvenView(ui.View):
       self.subviews[0].center = (self.width/2, self.height/2)
       return
 
-    content_width = 0
-    for view in self.subviews:
-      content_width += view.width if self.horizontal else view.height
+    content_width = sum(view.width if self.horizontal else view.height
+                        for view in self.subviews)
     free_half_per_item = (self.width - 2 * self.margin - content_width)/(item_count - 1)/2
 
     baseline = self.margin - free_half_per_item

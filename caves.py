@@ -23,14 +23,14 @@ def pil_color(color):
 class ControlCenter():
   
   menu_color = '#888888'
-  colors = ['green', 'red', 'blue', 'orange', 'deeppink']
-  icon_names = [
+  colors = ('green', 'red', 'blue', 'orange', 'deeppink')
+  icon_names = (
     'emj:Snake',
     'emj:Octopus',
     'emj:Whale',
     'emj:Honeybee',
     'emj:Lady_Beetle'
-  ]
+  )
 
 #  icon_names = [
 #    'spc:PlayerShip1Green',
@@ -39,13 +39,13 @@ class ControlCenter():
 #    'spc:PlayerShip2Orange'
 #  ]
 
-  small_icon_names = [
+  small_icon_names = (
     'spc:PlayerLife1Green',
     'spc:PlayerLife2Red',
     'spc:PlayerLife3Blue',
     'spc:PlayerLife2Orange',
     'spc:PlayerLife3Red'
-  ]
+  )
   
   puff_image_name = 'shp:WhitePuff'
   
