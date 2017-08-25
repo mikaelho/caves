@@ -2,6 +2,8 @@
 
 A finger-tracing racing game for Pythonista, available on [GitHub](https://github.com/mikaelho/caves).
 
+_Note:_ Current version has animations which rely on a feature only available in Pythonista 3 beta.
+
 ![Main screen](https://raw.githubusercontent.com/mikaelho/caves/master/play_images/main_screen.jpg)
 
 Caves of Soukka is a game where you race friends through a playfield, visiting a set of waypoints in order.
