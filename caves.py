@@ -1,16 +1,14 @@
 #coding: utf-8
-import ui
+import ui, sound
 import console, dialogs
 import Image as pilImage
-import io, os, json, time, math
+import ImageOps
+import io, os, json, time, math, random
 import functools, contextlib
 import dialogs
 from vector import Vector
 from EvenView import EvenView
 
-#from composite import *
-#import cornermenu
-#from Image import Image as img
 
 def inttuple(input_pair):
   return (int(input_pair[0]), int(input_pair[1]))
@@ -47,8 +45,10 @@ class ControlCenter():
     'spc:PlayerLife3Blue',
     'spc:PlayerLife2Orange',
     'spc:PlayerLife3Red'
-    
   ]
+  
+  puff_image_name = 'shp:WhitePuff'
+  
   active_players = [True]*len(colors)
   
   def __init__(self, bg_view):
@@ -62,6 +62,7 @@ class ControlCenter():
     self.set_default_map()
     self.hide_all()
     self.show_main_menu()
+    #self.load_images()
     
   def set_default_map(self):
     playfield_path = 'playfields'
@@ -78,6 +79,20 @@ class ControlCenter():
     self.hide_edit_menu()
     self.hide_play_menu()
     self.hide_play_layers()
+    
+  def load_images(self):
+    self.puff_images = {}
+    for color in self.colors:
+      p_color = ui.parse_color(color)
+      self.puff_images[p_color] = []
+      for i in range(25):
+        with io.BytesIO(ui.Image(self.puff_image_name + str(i).zfill(2)).to_png()) as fp:
+          orig_puff = pilImage.open(fp)
+          gray_img = orig_puff.convert('L')
+          color_puff = ImageOps.colorize(gray_img, 'black', color)
+          with io.BytesIO() as fp2:
+            color_puff.save(fp2, 'PNG')
+            self.puff_images[p_color].append(ui.Image.from_data(fp2.getvalue()))
     
   def create_main_menu(self):
     
@@ -116,13 +131,6 @@ class ControlCenter():
       
     with io.BytesIO(self.edit_view.img.to_png()) as fp:
       playfield = pilImage.open(fp).resize((int(self.bg.width), int(self.bg.height))).load()
-#    for x in range(3000):
-#      try:
-#        pix = playfield[x, 400]
-#        (pix[3])
-#      except:
-#        print(x)
-#        break
     for layer in self.play_layers:
       layer.set_map(self.edit_view.waypoints, playfield, self.multiplier)
     self.show_play_layers()
@@ -172,13 +180,6 @@ class ControlCenter():
     self.hide_all()
     self.show_main_menu()
 
-#  def play_multi(self, sender):
-#    pass
-#    
-#  def load_and_play(self, img_filename):
-#    self.load_actual(img_filename)
-#    self.show_play_view()
-
   def map_new(self, sender):
     self.hide_all()
     self.filename = ''
@@ -220,8 +221,6 @@ class ControlCenter():
     # Load image
     img_filename = self.filename
     iv = ui.ImageView(frame=self.bg.bounds)
-    #iv.hidden = True
-    #self.add_subview(iv)
     iv.image = ui.Image(img_filename)
     self.edit_view.img = snapshot(iv)
     self.multiplier = self.edit_view.img.size[1]/self.edit_view.height
@@ -320,8 +319,6 @@ class ControlCenter():
       return
     (name, _) = os.path.splitext(os.path.basename(filename))
     self.filename = 'playfields/' + name
-    # Resize to 5s size
-    #resize_5s = (640, 1136)
 
     for wp in self.edit_view.waypoints:
       wp.hidden = True
@@ -353,11 +350,6 @@ class ControlCenter():
       json.dump(settings, fp)
 
     self.quit_map(sender)
-
-    #byte_file = io.BytesIO(self.iv.image.to_png())
-    #pil = pilImage.open(byte_file)
-    #pil = pil.resize(resize_5s)
-    #pil.save(self.filename)
     
   def create_play_menu(self):
     play_menu = ui.View(frame=self.bg.bounds)
@@ -367,12 +359,6 @@ class ControlCenter():
       [ 'iow:arrow_right_b_32', self.next_turn ]
     ]
     return self.setup_bottom_menu(buttons)
-#    (_,_,w,h) = play_menu.frame
-#    def pick_map(sender):
-#      self.load_map(next_func=self.set_map_for_play)
-#    self.map_btn = ui.Button(title='Pick map', tint_color='black', background_color=self.menu_color, corner_radius=5, action=pick_map, frame=(0.1*w, 0.1*h, 0.8*w, 50))
-#    play_menu.add_subview(self.map_btn)
-#    return play_menu
 
   def hide_play_menu(self):
     self.play_menu.hidden = True
@@ -395,19 +381,6 @@ class ControlCenter():
     
   def show_play_layers(self):
     pass
-#    for layer in self.play_layers:
-#      layer.hidden = False
-#      layer.bring_to_front()
-
-
-#class PlayingView(ui.View):
-#  
-#  def __init__(self, players, waypoints, playfield):
-#    self.players = players
-#    for player in players:
-#      player['current_location'] = waypoints[0].center
-#      layer = PlayingLayer()
-#      player['view'] 
 
 
 class PlayingLayer(ui.View):
@@ -418,14 +391,15 @@ class PlayingLayer(ui.View):
     self.control = control
     self.color = ui.parse_color(color)
     self.init_values()
-    #self.start_turn(starting_point)
     
   def init_values(self):
     self.tracking = False
     self.previous_move = []
     self.current_move = []
     self.touch_stale = False
+    self.animation_state = 'stopped'
     self.animate_counter = -1
+    self.splosion_counter = 0
     self.waypoints_visited = 0
     
   def set_map(self, waypoints, playfield, multiplier=1.0):
@@ -438,12 +412,7 @@ class PlayingLayer(ui.View):
   def start_turn(self):
     starting_point = Vector(self.starting_point)
     (x,y) = starting_point
-    #start_marker = ui.View(frame=(x,y,30,30), corner_radius=15, alpha=0.5, touch_enabled=False)
-    #start_marker.background_color = '#ffc688'
-    #self.add_subview(start_marker)
     self.start_area = self.flood_fill_start_marker(tuple(starting_point), self.color)
-    #self.add_subview(self.start_area)
-    #start_marker.center = tuple(starting_point)
     self.hidden = False
     self.bring_to_front()
     for layer in self.control.play_layers:
@@ -470,6 +439,7 @@ class PlayingLayer(ui.View):
         int_tl = (int(tl[0]), int(tl[1]))
         if v.magnitude < 15 and self.start_area[int_tl][3] > 0:
           self.tracking = True
+          self.waypoints_hit_this_turn = []
           self.background_color = 'black'
           for view in self.subviews:
             self.remove_subview(view)
@@ -489,6 +459,7 @@ class PlayingLayer(ui.View):
             close_to_waypoints = True
             if i == self.waypoints_visited:
               self.waypoints_visited += 1
+              self.waypoints_hit_this_turn.append((len(self.current_move), i))
         wall = self.playfield[pos][3] > 200
         if wall:
           if not close_to_waypoints:           
@@ -505,30 +476,41 @@ class PlayingLayer(ui.View):
       self.tracking = False
       self.background_color = 'transparent'
       self.starting_point = end_location
+      waypoints_visited_before_turn = self.waypoints_visited if len(self.waypoints_hit_this_turn) == 0 else self.waypoints_hit_this_turn[0][1]
       for i, wp in enumerate(self.waypoints):
-        wp.background_color = '#6cd655' if i < self.waypoints_visited else '#a2c2ff'
+        wp.background_color = '#6cd655' if i < waypoints_visited_before_turn else '#a2c2ff'
       self.control.show_play_menu()
-      self.animate_counter = len(self.current_move)
+      self.animate_counter = 0
+      self.splosion_counter = 0
+      self.animation_state = 'moving'
+      self.update_interval = 0.05
       self.set_needs_display()
       
-#  def animate_turn(self):
-#    if self.animate_counter < len(self.current_move):
-#      self.animate_counter += max(20, int(len(self.current_move)/40))
-#      self.animate_counter = min(len(self.current_move)-1, self.animate_counter)
-#      ui.delay(self.animate_turn, 0.05)
-#      self.update_image()
+  def update(self):
+    if self.animation_state == 'moving':
+      if self.animate_counter < len(self.current_move):
+        self.animate_counter += max(10, int(len(self.current_move)/40))
+        self.animate_counter = min(len(self.current_move), self.animate_counter)
+        self.set_needs_display()
+      else:
+        self.animation_state = 'sploding'
+        self.update_interval = 0.1
+    if self.animation_state == 'sploding':
+      self.set_needs_display()
+      if self.splosion_counter == 0:
+        sound.play_effect('arcade:Explosion_2')
+      self.splosion_counter += 1
+      if self.splosion_counter > 5:
+        self.animation_state = 'stopped'
+    if self.animation_state == 'stopped':
+      self.update_interval = 0.0
 
   def draw(self):
     if self.tracking:
       ui.set_color('black')
       ui.fill_rect(0, 0, self.width, self.height)
     else:
-      if self.animate_counter < len(self.current_move):
-        self.animate_counter += max(20, int(len(self.current_move)/40))
-        self.animate_counter = min(len(self.current_move)-1, self.animate_counter)
-        #self.set_needs_display()
       base_color = tuple([self.color[i] for i in range(3)])
-#      if len(self.previous_move) > 0:
       opacity_increment = 1.0/(len(self.current_move)+1) # 0.002
       alpha_incremental = 1.0 - self.animate_counter*opacity_increment
       if self.animate_counter > 0:
@@ -536,6 +518,20 @@ class PlayingLayer(ui.View):
           alpha_actual = max(0, alpha_incremental)
           self.draw_segment(base_color + (alpha_actual,), self.current_move[i-1], self.current_move[i])
           alpha_incremental += opacity_increment
+          if len(self.waypoints_hit_this_turn) > 0:
+            (hit_distance, waypoint_index) = self.waypoints_hit_this_turn[0]
+            if self.animate_counter >= hit_distance:
+              sound.play_effect('digital:PowerUp1')
+              self.waypoints[waypoint_index].background_color = '#6cd655'
+              self.waypoints_hit_this_turn = self.waypoints_hit_this_turn[1:]
+      if self.animation_state == 'sploding':
+        splode_alpha = 1.0-self.splosion_counter*0.15
+        splode_radius = self.splosion_counter * 4
+        splode_color = base_color + (splode_alpha,)
+        (x,y) = self.current_move[-1]
+        path = ui.Path.oval(x-splode_radius,y-splode_radius,2*splode_radius,2*splode_radius)
+        ui.set_color(splode_color)
+        path.fill()
 #        pos1 = self.current_move[self.animate_counter - 2]
 #        pos2 = self.current_move[self.animate_counter - 1]
 #        angle = (Vector(pos2) - Vector(pos1)).degrees
